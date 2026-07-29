@@ -129,11 +129,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun executeButton(entityId: String) {
         scope.launch {
+            // Capture state BEFORE setting to LOADING (needed for select toggle logic)
+            val previousState = _deviceStates.value[entityId] ?: ButtonState.IDLE
             _deviceStates.value = _deviceStates.value + (entityId to ButtonState.LOADING)
 
             if (entityId.startsWith("select.")) {
                 // Select entity: smart toggle (off ↔ first non-off option)
-                val currentState = _deviceStates.value[entityId] ?: ButtonState.IDLE
+                val currentState = previousState
                 val options = _selectOptions.value[entityId] ?: emptyList()
                 val offOption = options.firstOrNull { it == "关" || it == "off" || it == "关闭" }
                 val onOptions = options.filter { it != offOption }
