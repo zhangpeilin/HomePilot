@@ -23,7 +23,7 @@ data class Entity(
     companion object {
         val CONTROLLABLE_DOMAINS = listOf(
             "light", "switch", "fan", "cover", "lock",
-            "climate", "media_player", "vacuum", "humidifier"
+            "climate", "media_player", "vacuum", "humidifier", "select"
         )
         val SCENE_DOMAINS = listOf("scene", "automation", "script")
     }

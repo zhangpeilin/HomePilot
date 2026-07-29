@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.homepilot.app.model.*
+import com.homepilot.app.network.HaStateSubscriber
 import com.homepilot.app.network.RetrofitClient
 import com.homepilot.app.repository.HomeAssistantRepository
 import com.homepilot.app.util.PreferencesManager
@@ -21,22 +22,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _deviceStates = MutableStateFlow<Map<String, ButtonState>>(emptyMap())
     val deviceStates: StateFlow<Map<String, ButtonState>> = _deviceStates
 
-    // Device groups for the Add dialog
     private val _deviceGroups = MutableStateFlow<List<DeviceGroup>>(emptyList())
     val deviceGroups: StateFlow<List<DeviceGroup>> = _deviceGroups
 
     private val _isLoadingGroups = MutableStateFlow(false)
     val isLoadingGroups: StateFlow<Boolean> = _isLoadingGroups
 
-    // Track whether the repo has been initialized
     private val _repoReady = MutableStateFlow(false)
+    private val _selectOptions = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val selectOptions: StateFlow<Map<String, List<String>>> = _selectOptions
 
     private var repository: HomeAssistantRepository? = null
     private var currentConfig: ServerConfig? = null
+    private var stateSubscriber: HaStateSubscriber? = null
     private var refreshJob: Job? = null
 
     init {
-        // Observe server config → initialize repository
         scope.launch {
             prefsManager.serverConfigFlow.collect { config ->
                 if (config.host.isNotBlank()) {
@@ -45,25 +46,52 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         val api = RetrofitClient.getApi(config)
                         repository = HomeAssistantRepository(api, config)
                         _repoReady.value = true
-                        // Auto-load device groups when repo is ready
                         loadDeviceGroups()
+                        // Start state subscriber
+                        setupStateSubscriber(config)
                     } catch (e: Exception) {
                         _repoReady.value = false
                     }
                 }
             }
         }
-        // Observe button list changes → refresh device states
         scope.launch {
             homeButtons.collect { buttons ->
                 if (buttons.isNotEmpty()) {
                     refreshDeviceStates(buttons)
-                    startPeriodicRefresh(buttons)
+                    // Update subscriber with current entity IDs
+                    stateSubscriber?.subscribe(buttons.map { it.entityId }.toSet())
+                    loadSelectOptions(buttons)
                 } else {
                     refreshJob?.cancel()
+                    stateSubscriber?.subscribe(emptySet())
                     _deviceStates.value = emptyMap()
                 }
             }
+        }
+    }
+
+    private fun setupStateSubscriber(config: ServerConfig) {
+        stateSubscriber?.unsubscribe()
+        stateSubscriber = HaStateSubscriber(
+            config = config,
+            scope = scope,
+            onStateChanged = { entityId, haState ->
+                val btnState = haStateToButtonState(haState)
+                _deviceStates.value = _deviceStates.value + (entityId to btnState)
+            }
+        )
+    }
+
+    private fun loadSelectOptions(buttons: List<HomeButton>) {
+        scope.launch {
+            val selectButtons = buttons.filter { it.entityId.startsWith("select.") }
+            val optionsMap = mutableMapOf<String, List<String>>()
+            for (btn in selectButtons) {
+                repository?.getEntityOptions(btn.entityId)
+                    ?.onSuccess { opts -> optionsMap[btn.entityId] = opts }
+            }
+            _selectOptions.value = optionsMap
         }
     }
 
@@ -97,33 +125,47 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateButtonIcon(entityId: String, newIconName: String) {
-        scope.launch {
-            val current = homeButtons.value.toMutableList()
-            val idx = current.indexOfFirst { it.entityId == entityId }
-            if (idx >= 0) {
-                current[idx] = current[idx].copy(iconName = newIconName)
-                prefsManager.saveHomeButtons(current)
-            }
-        }
-    }
-
     // ─── Execute device command ─────────────────────────────────
 
     fun executeButton(entityId: String) {
         scope.launch {
             _deviceStates.value = _deviceStates.value + (entityId to ButtonState.LOADING)
+
+            if (entityId.startsWith("select.")) {
+                // Select entity: smart toggle (off ↔ first non-off option)
+                val currentState = _deviceStates.value[entityId] ?: ButtonState.IDLE
+                val options = _selectOptions.value[entityId] ?: emptyList()
+                val offOption = options.firstOrNull { it == "关" || it == "off" || it == "关闭" }
+                val onOptions = options.filter { it != offOption }
+
+                val targetOption = if (currentState == ButtonState.SUCCESS) {
+                    offOption ?: onOptions.firstOrNull() ?: return@launch
+                } else {
+                    onOptions.firstOrNull() ?: return@launch
+                }
+
+                repository?.let { repo ->
+                    repo.selectOption(entityId, targetOption)
+                        .onSuccess { delay(300); refreshSingleState(entityId) }
+                        .onFailure { _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED) }
+                }
+            } else {
+                repository?.let { repo ->
+                    repo.toggleEntity(entityId)
+                        .onSuccess { delay(300); refreshSingleState(entityId) }
+                        .onFailure { _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED) }
+                } ?: run { _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED) }
+            }
+        }
+    }
+
+    fun selectOption(entityId: String, option: String) {
+        scope.launch {
+            _deviceStates.value = _deviceStates.value + (entityId to ButtonState.LOADING)
             repository?.let { repo ->
-                repo.toggleEntity(entityId)
-                    .onSuccess {
-                        delay(300)
-                        refreshSingleState(entityId)
-                    }
-                    .onFailure {
-                        _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED)
-                    }
-            } ?: run {
-                _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED)
+                repo.selectOption(entityId, option)
+                    .onSuccess { delay(300); refreshSingleState(entityId) }
+                    .onFailure { _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED) }
             }
         }
     }
@@ -135,9 +177,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     .onSuccess { entity ->
                         _deviceStates.value = _deviceStates.value + (entityId to haStateToButtonState(entity.state))
                     }
-                    .onFailure {
-                        _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED)
-                    }
+                    .onFailure { _deviceStates.value = _deviceStates.value + (entityId to ButtonState.FAILED) }
             }
         }
     }
@@ -155,58 +195,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun startPeriodicRefresh(buttons: List<HomeButton>) {
-        refreshJob?.cancel()
-        refreshJob = scope.launch {
-            while (isActive) {
-                delay(30_000)
-                refreshDeviceStates(buttons)
+    // ─── Device groups for dialog ───────────────────────────────
+
+    fun loadDeviceGroups() {
+        scope.launch {
+            if (repository == null) {
+                _isLoadingGroups.value = true
+                withTimeoutOrNull(10_000) { _repoReady.first { it } }
+                if (repository == null) { _isLoadingGroups.value = false; return@launch }
             }
+            _isLoadingGroups.value = true
+            repository!!.getControllableDevicesGrouped()
+                .onSuccess { _deviceGroups.value = it }
+                .onFailure { fallbackDomainGrouping() }
+            _isLoadingGroups.value = false
         }
     }
 
-    // ─── Device groups for dialog ───────────────────────────────
-
-    /**
-     * Load device groups for the Add dialog.
-     * Waits for repository to be ready if needed.
-     */
-    fun loadDeviceGroups() {
-        scope.launch {
-            // If repo not ready yet, wait for it (max 10s)
-            if (repository == null) {
-                _isLoadingGroups.value = true
-                withTimeoutOrNull(10_000) {
-                    _repoReady.first { it }
-                }
-                if (repository == null) {
-                    _isLoadingGroups.value = false
-                    _deviceGroups.value = emptyList()
-                    return@launch
-                }
-            }
-
-            _isLoadingGroups.value = true
-            val repo = repository!!
-
-            repo.getControllableDevicesGrouped()
-                .onSuccess { groups ->
-                    _deviceGroups.value = groups
-                }
-                .onFailure { error ->
-                    // Fallback: domain-level grouping
-                    repo.getAllEntities().onSuccess { entities ->
-                        val controllable = entities.filter {
-                            it.domain in Entity.CONTROLLABLE_DOMAINS
-                        }
-                        _deviceGroups.value = controllable.groupBy { it.domain }
-                            .map { (domain, list) ->
-                                DeviceGroup(name = domain.uppercase(), entities = list)
-                            }
-                    }
-                }
-
-            _isLoadingGroups.value = false
+    private suspend fun fallbackDomainGrouping() {
+        repository?.getAllEntities()?.onSuccess { entities ->
+            _deviceGroups.value = entities.filter { it.domain in Entity.CONTROLLABLE_DOMAINS }
+                .groupBy { it.domain }.map { (d, list) -> DeviceGroup(name = d.uppercase(), entities = list) }
         }
     }
 
@@ -220,6 +229,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         "on" -> ButtonState.SUCCESS
         "off" -> ButtonState.IDLE
         "unavailable" -> ButtonState.FAILED
-        else -> ButtonState.IDLE
+        "关" -> ButtonState.IDLE         // Chinese "off" for select entities
+        "照明开" -> ButtonState.SUCCESS   // Chinese "light on" for 浴霸
+        else -> if (haState != "off" && haState != "") ButtonState.SUCCESS else ButtonState.IDLE
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stateSubscriber?.unsubscribe()
     }
 }

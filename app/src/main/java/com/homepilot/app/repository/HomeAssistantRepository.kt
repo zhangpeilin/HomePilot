@@ -25,6 +25,13 @@ class HomeAssistantRepository(
         }
     }
 
+    suspend fun getEntityOptions(entityId: String): Result<List<String>> = runCatching {
+        val result = getEntityState(entityId).getOrThrow()
+        val raw = result.attributes?.get("options")
+        if (raw is List<*>) raw.filterIsInstance<String>()
+        else emptyList()
+    }
+
     suspend fun getEntityState(entityId: String): Result<Entity> = runCatching {
         val response = api.getEntityState(entityId)
         if (response.isSuccessful) {
@@ -116,6 +123,12 @@ class HomeAssistantRepository(
         val response = api.callService(domain, "turn_off", mapOf("entity_id" to entityId))
         if (response.isSuccessful) response.body() ?: emptyList()
         else throw Exception("关闭设备失败 [${response.code()}] ${response.message()}")
+    }
+
+    suspend fun selectOption(entityId: String, option: String): Result<List<Entity>> = runCatching {
+        val response = api.callService("select", "select_option", mapOf("entity_id" to entityId, "option" to option))
+        if (response.isSuccessful) response.body() ?: emptyList()
+        else throw Exception("选择失败 [${response.code()}]")
     }
 
     suspend fun callService(request: ServiceCallRequest): Result<List<Entity>> = runCatching {
