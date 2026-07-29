@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HomePilot</string>
+    <string name="server_config">服务器配置</string>
+    <string name="dashboard">设备面板</string>
+    <string name="scenes">场景</string>
+    <string name="connect">连接测试</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="turn_on">开启</string>
+    <string name="turn_off">关闭</string>
+    <string name="toggle">切换</string>
+    <string name="loading">加载中...</string>
+    <string name="error_occurred">发生错误</string>
+    <string name="no_devices">暂无设备</string>
+    <string name="no_scenes">暂无场景</string>
+    <string name="trigger_scene">触发场景</string>
+    <string name="config_hint">请先配置 Home Assistant 服务器</string>
+</resources>
