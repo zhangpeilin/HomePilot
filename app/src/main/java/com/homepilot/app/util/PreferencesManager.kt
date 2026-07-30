@@ -21,6 +21,7 @@ class PreferencesManager(private val context: Context) {
         private val KEY_TOKEN = stringPreferencesKey("access_token")
         private val KEY_USE_TLS = booleanPreferencesKey("use_tls")
         private val KEY_HOME_GROUPING = booleanPreferencesKey("home_grouping")
+        private val KEY_HOME_EXPAND_DEFAULT = booleanPreferencesKey("home_expand_default")
         private val KEY_HOME_BUTTONS = stringPreferencesKey("home_buttons")
     }
 
@@ -39,6 +40,10 @@ class PreferencesManager(private val context: Context) {
         preferences[KEY_HOME_GROUPING] ?: true
     }
 
+    val homeExpandDefault: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_HOME_EXPAND_DEFAULT] ?: true
+    }
+
     val homeButtonsFlow: Flow<List<HomeButton>> = context.dataStore.data.map { preferences ->
         val json = preferences[KEY_HOME_BUTTONS] ?: "[]"
         val type = object : TypeToken<List<HomeButton>>() {}.type
@@ -55,6 +60,12 @@ class PreferencesManager(private val context: Context) {
             preferences[KEY_PORT] = config.port
             preferences[KEY_TOKEN] = config.accessToken
             preferences[KEY_USE_TLS] = config.useTls
+        }
+    }
+
+    suspend fun saveHomeExpandDefault(expanded: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_HOME_EXPAND_DEFAULT] = expanded
         }
     }
 

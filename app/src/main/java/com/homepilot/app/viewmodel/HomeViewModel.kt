@@ -35,6 +35,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val homeGroupingEnabled: StateFlow<Boolean> = prefsManager.homeGroupingEnabled
         .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
 
+    val homeExpandDefault: StateFlow<Boolean> = prefsManager.homeExpandDefault
+        .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
+
     // Home button grouping by area
     private val _homeButtonGroups = MutableStateFlow<Map<String, List<HomeButton>>>(emptyMap())
     val homeButtonGroups: StateFlow<Map<String, List<HomeButton>>> = _homeButtonGroups
@@ -312,6 +315,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _homeButtonGroups.value = emptyMap()
                 _expandedHomeGroups.value = emptySet()
+            }
+        }
+    }
+
+    fun setExpandDefault(expanded: Boolean) {
+        scope.launch {
+            prefsManager.saveHomeExpandDefault(expanded)
+            // Re-group with new default
+            if (homeGroupingEnabled.value) {
+                groupHomeButtonsByArea(homeButtons.value)
             }
         }
     }

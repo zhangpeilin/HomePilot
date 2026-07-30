@@ -55,10 +55,13 @@ fun HomePilotNavGraph(
 
         composable(Routes.SERVER_CONFIG) {
             val groupingEnabled by homeViewModel.homeGroupingEnabled.collectAsState()
+            val expandDefault by homeViewModel.homeExpandDefault.collectAsState()
             ServerConfigScreen(
                 viewModel = serverConfigViewModel,
                 homeGroupingEnabled = groupingEnabled,
+                homeExpandDefault = expandDefault,
                 onGroupingToggle = { enabled -> homeViewModel.setGroupingEnabled(enabled) },
+                onExpandToggle = { expanded -> homeViewModel.setExpandDefault(expanded) },
                 onConfigSaved = {
                     navController.popBackStack()
                 }

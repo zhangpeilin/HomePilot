@@ -24,7 +24,9 @@ import com.homepilot.app.viewmodel.ServerConfigViewModel
 fun ServerConfigScreen(
     viewModel: ServerConfigViewModel,
     homeGroupingEnabled: Boolean = true,
+    homeExpandDefault: Boolean = true,
     onGroupingToggle: (Boolean) -> Unit = {},
+    onExpandToggle: (Boolean) -> Unit = {},
     onConfigSaved: () -> Unit = {}
 ) {
     val config by viewModel.serverConfig.collectAsState()
@@ -250,6 +252,36 @@ fun ServerConfigScreen(
                     checked = homeGroupingEnabled,
                     onCheckedChange = onGroupingToggle
                 )
+            }
+        }
+
+        // 展开/折叠默认状态（仅在分组开启时有效）
+        if (homeGroupingEnabled) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "分组默认展开",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (homeExpandDefault) "区域分组默认全部展开" else "区域分组默认全部折叠",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = homeExpandDefault,
+                        onCheckedChange = onExpandToggle
+                    )
+                }
             }
         }
 

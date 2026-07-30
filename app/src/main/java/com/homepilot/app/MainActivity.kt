@@ -34,18 +34,10 @@ sealed class BottomNavItem(
     val label: String,
     val icon: @Composable () -> Unit
 ) {
-    data object Home : BottomNavItem(
-        Routes.HOME, "首页", { Icon(Icons.Default.Home, contentDescription = "首页") }
-    )
-    data object Dashboard : BottomNavItem(
-        Routes.DASHBOARD, "设备", { Icon(Icons.Default.PowerSettingsNew, contentDescription = "设备") }
-    )
-    data object Scenes : BottomNavItem(
-        Routes.SCENES, "场景", { Icon(Icons.Default.PlaylistPlay, contentDescription = "场景") }
-    )
-    data object Settings : BottomNavItem(
-        Routes.SERVER_CONFIG, "设置", { Icon(Icons.Default.Settings, contentDescription = "设置") }
-    )
+    data object Home : BottomNavItem(Routes.HOME, "首页", { Icon(Icons.Default.Home, null) })
+    data object Dashboard : BottomNavItem(Routes.DASHBOARD, "设备", { Icon(Icons.Default.PowerSettingsNew, null) })
+    data object Scenes : BottomNavItem(Routes.SCENES, "场景", { Icon(Icons.Default.PlaylistPlay, null) })
+    data object Settings : BottomNavItem(Routes.SERVER_CONFIG, "设置", { Icon(Icons.Default.Settings, null) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,10 +48,8 @@ fun HomePilotMainScreen() {
     val currentRoute = navBackStackEntry?.destination?.route
 
     val bottomNavItems = listOf(
-        BottomNavItem.Home,
-        BottomNavItem.Dashboard,
-        BottomNavItem.Scenes,
-        BottomNavItem.Settings
+        BottomNavItem.Home, BottomNavItem.Dashboard,
+        BottomNavItem.Scenes, BottomNavItem.Settings
     )
 
     Scaffold(
@@ -71,7 +61,7 @@ fun HomePilotMainScreen() {
                         onClick = {
                             if (currentRoute != item.route) {
                                 navController.navigate(item.route) {
-                                    popUpTo(Routes.HOME) { saveState = true }
+                                    popUpTo(Routes.HOME)
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -85,9 +75,7 @@ fun HomePilotMainScreen() {
         }
     ) { innerPadding ->
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
         ) {
             HomePilotNavGraph(navController = navController)
         }
