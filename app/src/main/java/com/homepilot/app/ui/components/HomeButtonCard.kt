@@ -1,8 +1,6 @@
 package com.homepilot.app.ui.components
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -20,7 +19,9 @@ import com.homepilot.app.model.ButtonState
 import com.homepilot.app.model.HomeButton
 import com.homepilot.app.util.DeviceIconMapper
 
-@OptIn(ExperimentalFoundationApi::class)
+private val AmberYellow = Color(0xFFFFC107)
+private val AmberBg = Color(0xFFFFF3CD)
+
 @Composable
 fun HomeButtonCard(
     button: HomeButton,
@@ -32,47 +33,50 @@ fun HomeButtonCard(
     val isOn = deviceState == ButtonState.SUCCESS
     val isLoading = deviceState == ButtonState.LOADING
     val isFailed = deviceState == ButtonState.FAILED
+    val isLight = button.entityId.startsWith("light.")
+
     val alpha = when (deviceState) {
         ButtonState.SUCCESS -> 1f
         ButtonState.LOADING -> 1f
-        ButtonState.IDLE -> 0.55f
+        ButtonState.IDLE -> 0.60f
         ButtonState.FAILED -> 0.40f
     }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .alpha(alpha)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
+            .alpha(alpha),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = when {
-                isOn -> MaterialTheme.colorScheme.primaryContainer
-                isFailed -> MaterialTheme.colorScheme.errorContainer
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            }
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isOn) 4.dp else 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Icon / Loading circle
+            // Icon circle - only this part changes color when ON
+            val iconBg = when {
+                isLoading -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
+                isOn && isLight -> AmberBg
+                isOn -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                isFailed -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
+            }
+            val iconTint = when {
+                isLoading -> MaterialTheme.colorScheme.onSurfaceVariant
+                isOn && isLight -> AmberYellow
+                isOn -> MaterialTheme.colorScheme.primary
+                isFailed -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
             Box(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .background(
-                        when {
-                            isOn -> MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
-                            isFailed -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
-                        }
-                    ),
+                    .background(iconBg),
                 contentAlignment = Alignment.Center
             ) {
                 if (isLoading) {
@@ -86,11 +90,7 @@ fun HomeButtonCard(
                         imageVector = DeviceIconMapper.toImageVector(button.icon),
                         contentDescription = button.displayName,
                         modifier = Modifier.size(28.dp),
-                        tint = when {
-                            isOn -> MaterialTheme.colorScheme.primary
-                            isFailed -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
+                        tint = iconTint
                     )
                 }
             }
@@ -115,6 +115,7 @@ fun HomeButtonCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = when {
                     isLoading -> MaterialTheme.colorScheme.tertiary
+                    isOn && isLight -> AmberYellow
                     isOn -> MaterialTheme.colorScheme.primary
                     isFailed -> MaterialTheme.colorScheme.error
                     else -> MaterialTheme.colorScheme.onSurfaceVariant

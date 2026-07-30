@@ -32,6 +32,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectOptions = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val selectOptions: StateFlow<Map<String, List<String>>> = _selectOptions
 
+    // Home button grouping by area
+    private val _homeButtonGroups = MutableStateFlow<Map<String, List<HomeButton>>>(emptyMap())
+    val homeButtonGroups: StateFlow<Map<String, List<HomeButton>>> = _homeButtonGroups
+
+    private val _expandedHomeGroups = MutableStateFlow<Set<String>>(emptySet())
+    val expandedHomeGroups: StateFlow<Set<String>> = _expandedHomeGroups
+
     private var repository: HomeAssistantRepository? = null
     private var currentConfig: ServerConfig? = null
     private var stateSubscriber: HaStateSubscriber? = null
@@ -64,13 +71,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             homeButtons.collect { buttons ->
                 if (buttons.isNotEmpty()) {
                     refreshDeviceStates(buttons)
-                    // Update subscriber with current entity IDs
                     stateSubscriber?.subscribe(buttons.map { it.entityId }.toSet())
                     loadSelectOptions(buttons)
+                    groupHomeButtonsByArea(buttons)
                 } else {
                     refreshJob?.cancel()
                     stateSubscriber?.subscribe(emptySet())
                     _deviceStates.value = emptyMap()
+                    _homeButtonGroups.value = emptyMap()
                 }
             }
         }
@@ -125,6 +133,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val idx = current.indexOfFirst { it.entityId == entityId }
             if (idx >= 0) {
                 current[idx] = current[idx].copy(displayName = newName)
+                prefsManager.saveHomeButtons(current)
+            }
+        }
+    }
+
+    fun updateButtonIcon(entityId: String, newIconName: String) {
+        scope.launch {
+            val current = homeButtons.value.toMutableList()
+            val idx = current.indexOfFirst { it.entityId == entityId }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(iconName = newIconName)
                 prefsManager.saveHomeButtons(current)
             }
         }
@@ -200,6 +219,42 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     _deviceStates.value = _deviceStates.value + stateMap
                 }
         }
+    }
+
+    // ─── Home button area grouping ────────────────────────────
+
+    private suspend fun groupHomeButtonsByArea(buttons: List<HomeButton>) {
+        val areaMapping = repository?.fetchAreaMapping() ?: emptyMap()
+        if (areaMapping.isEmpty()) {
+            _homeButtonGroups.value = emptyMap()
+            _expandedHomeGroups.value = emptySet()
+            return
+        }
+
+        val grouped = mutableMapOf<String, MutableList<HomeButton>>()
+        val noArea = mutableListOf<HomeButton>()
+
+        for (btn in buttons) {
+            val areaName = areaMapping[btn.entityId]
+            if (areaName != null) {
+                grouped.getOrPut(areaName) { mutableListOf() }.add(btn)
+            } else {
+                noArea.add(btn)
+            }
+        }
+
+        val result = linkedMapOf<String, List<HomeButton>>()
+        grouped.forEach { (name, list) -> result[name] = list }
+        if (noArea.isNotEmpty()) result["未归类"] = noArea
+
+        _homeButtonGroups.value = result
+        _expandedHomeGroups.value = result.keys.toSet()
+    }
+
+    fun toggleHomeGroup(name: String) {
+        val current = _expandedHomeGroups.value.toMutableSet()
+        if (current.contains(name)) current.remove(name) else current.add(name)
+        _expandedHomeGroups.value = current
     }
 
     // ─── Device groups for dialog ───────────────────────────────

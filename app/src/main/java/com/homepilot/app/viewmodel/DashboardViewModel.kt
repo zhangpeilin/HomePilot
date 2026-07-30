@@ -88,9 +88,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                                 .map { (d, list) -> DeviceGroup(name = d.uppercase(), entities = list) }
                         }
 
-                        // Auto-expand all groups on first load
-                        _expandedControllable.value = _controllableGroups.value.map { it.name }.toSet()
-                        _expandedSensors.value = _sensorGroups.value.map { it.name }.toSet()
+                        // Default: all collapsed
+                        _expandedControllable.value = emptySet()
+                        _expandedSensors.value = emptySet()
                     }
                     .onFailure { e ->
                         _error.value = e.message
