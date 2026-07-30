@@ -12,7 +12,7 @@ object DeviceIconMapper {
         DeviceIcon.POWER -> Icons.Default.PowerSettingsNew
         DeviceIcon.TV -> Icons.Default.Tv
         DeviceIcon.AC -> Icons.Default.AcUnit
-        DeviceIcon.FAN -> Icons.Default.Air
+        DeviceIcon.FAN -> Icons.Default.WindPower
         DeviceIcon.LOCK -> Icons.Default.Lock
         DeviceIcon.SPEAKER -> Icons.Default.Speaker
         DeviceIcon.MUSIC -> Icons.Default.MusicNote
