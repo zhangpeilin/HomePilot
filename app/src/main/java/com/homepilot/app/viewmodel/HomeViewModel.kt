@@ -49,6 +49,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         loadDeviceGroups()
                         // Start state subscriber
                         setupStateSubscriber(config)
+                        // Retry subscribe in case buttons flow already fired before subscriber was ready
+                        val existingButtons = homeButtons.value
+                        if (existingButtons.isNotEmpty()) {
+                            stateSubscriber?.subscribe(existingButtons.map { it.entityId }.toSet())
+                        }
                     } catch (e: Exception) {
                         _repoReady.value = false
                     }

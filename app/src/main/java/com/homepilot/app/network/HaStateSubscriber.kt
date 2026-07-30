@@ -6,7 +6,6 @@ import com.google.gson.JsonParser
 import com.homepilot.app.model.ServerConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ClosedSendChannelException
 import okhttp3.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,7 +62,7 @@ class HaStateSubscriber(
 
         val connected = CompletableDeferred<Unit>()
         val msgChannel = Channel<String>(Channel.UNLIMITED)
-        var webSocket: WebSocket? = null
+        val webSocket: WebSocket
 
         webSocket = client.newWebSocket(
             Request.Builder().url(wsUrl).build(),
@@ -74,7 +73,7 @@ class HaStateSubscriber(
                     if (!connected.isCompleted) connected.completeExceptionally(t)
                     else msgChannel.close(t)
                 }
-                override fun onClosed(ws: WebSocket, code: Int, reason: String) { msgChannel.close() }
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { msgChannel.close() }
             }
         )
 
@@ -101,7 +100,7 @@ class HaStateSubscriber(
         while (currentCoroutineContext().isActive && running.get()) {
             val msg = try {
                 withTimeout(Long.MAX_VALUE) { msgChannel.receive() }
-            } catch (e: ClosedSendChannelException) {
+            } catch (e: kotlinx.coroutines.channels.ClosedReceiveChannelException) {
                 throw Exception("Channel closed")
             }
             val json = JsonParser.parseString(msg).asJsonObject
