@@ -3,6 +3,7 @@ package com.homepilot.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.homepilot.app.model.DeviceGroup
 import com.homepilot.app.model.Entity
 import com.homepilot.app.network.RetrofitClient
 import com.homepilot.app.repository.HomeAssistantRepository
@@ -14,8 +15,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val prefsManager = PreferencesManager(application)
 
-    private val _entities = MutableStateFlow<List<Entity>>(emptyList())
-    val entities: StateFlow<List<Entity>> = _entities
+    private val _controllableGroups = MutableStateFlow<List<DeviceGroup>>(emptyList())
+    val controllableGroups: StateFlow<List<DeviceGroup>> = _controllableGroups
+
+    private val _sensorGroups = MutableStateFlow<List<DeviceGroup>>(emptyList())
+    val sensorGroups: StateFlow<List<DeviceGroup>> = _sensorGroups
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -26,6 +30,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
 
+    // Expanded/collapsed state: set of area names that are expanded
+    private val _expandedControllable = MutableStateFlow<Set<String>>(emptySet())
+    val expandedControllable: StateFlow<Set<String>> = _expandedControllable
+
+    private val _expandedSensors = MutableStateFlow<Set<String>>(emptySet())
+    val expandedSensors: StateFlow<Set<String>> = _expandedSensors
+
     private var repository: HomeAssistantRepository? = null
 
     init {
@@ -34,9 +45,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 if (config.host.isNotBlank() && config.accessToken.isNotBlank()) {
                     try {
                         val api = RetrofitClient.getApi(config)
-                        repository = HomeAssistantRepository(api)
+                        repository = HomeAssistantRepository(api, config)
                         _isConnected.value = true
-                        refreshEntities()
+                        refreshAll()
                     } catch (e: Exception) {
                         _isConnected.value = false
                         _error.value = "初始化连接失败: ${e.localizedMessage}"
@@ -48,14 +59,38 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun refreshEntities() {
+    fun refreshAll() {
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             repository?.let { repo ->
                 repo.getAllEntities()
-                    .onSuccess { list ->
-                        _entities.value = list
+                    .onSuccess { entities ->
+                        val controllable = entities.filter {
+                            it.domain in Entity.CONTROLLABLE_DOMAINS
+                        }
+                        val sensors = entities.filter {
+                            it.domain !in Entity.CONTROLLABLE_DOMAINS
+                                    && it.domain !in Entity.SCENE_DOMAINS
+                                    && it.domain != "zone"
+                        }
+
+                        // Try area grouping
+                        val ctrlGroups = repo.groupEntitiesByArea(controllable)
+                        _controllableGroups.value = ctrlGroups.ifEmpty {
+                            controllable.groupBy { it.domain }
+                                .map { (d, list) -> DeviceGroup(name = d.uppercase(), entities = list) }
+                        }
+
+                        val sensorGroups = repo.groupEntitiesByArea(sensors)
+                        _sensorGroups.value = sensorGroups.ifEmpty {
+                            sensors.groupBy { it.domain }
+                                .map { (d, list) -> DeviceGroup(name = d.uppercase(), entities = list) }
+                        }
+
+                        // Auto-expand all groups on first load
+                        _expandedControllable.value = _controllableGroups.value.map { it.name }.toSet()
+                        _expandedSensors.value = _sensorGroups.value.map { it.name }.toSet()
                     }
                     .onFailure { e ->
                         _error.value = e.message
@@ -65,19 +100,23 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    val controllableEntities: StateFlow<List<Entity>> = _entities.map { list ->
-        list.filter { it.domain in Entity.CONTROLLABLE_DOMAINS }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun toggleControllableGroup(name: String) {
+        val current = _expandedControllable.value.toMutableSet()
+        if (current.contains(name)) current.remove(name) else current.add(name)
+        _expandedControllable.value = current
+    }
 
-    val sensorEntities: StateFlow<List<Entity>> = _entities.map { list ->
-        list.filter { it.domain !in Entity.CONTROLLABLE_DOMAINS && it.domain !in Entity.SCENE_DOMAINS }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun toggleSensorGroup(name: String) {
+        val current = _expandedSensors.value.toMutableSet()
+        if (current.contains(name)) current.remove(name) else current.add(name)
+        _expandedSensors.value = current
+    }
 
     fun toggleEntity(entityId: String) {
         viewModelScope.launch {
             repository?.let { repo ->
                 repo.toggleEntity(entityId)
-                    .onSuccess { refreshEntities() }
+                    .onSuccess { refreshAll() }
                     .onFailure { _error.value = it.message }
             }
         }
@@ -87,7 +126,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository?.let { repo ->
                 repo.turnOn(entityId)
-                    .onSuccess { refreshEntities() }
+                    .onSuccess { refreshAll() }
                     .onFailure { _error.value = it.message }
             }
         }
@@ -97,7 +136,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository?.let { repo ->
                 repo.turnOff(entityId)
-                    .onSuccess { refreshEntities() }
+                    .onSuccess { refreshAll() }
                     .onFailure { _error.value = it.message }
             }
         }

@@ -44,54 +44,61 @@ class HomeAssistantRepository(
     suspend fun getControllableDevicesGrouped(): Result<List<DeviceGroup>> = runCatching {
         val allEntities = getAllEntities().getOrThrow()
         val controllable = allEntities.filter { it.domain in Entity.CONTROLLABLE_DOMAINS }
-        Log.d(TAG, "getControllableDevicesGrouped: ${controllable.size} controllable, serverConfig=${serverConfig != null}")
         if (controllable.isEmpty()) return@runCatching emptyList()
+        groupEntitiesByArea(controllable).let { groups ->
+            if (groups.isNotEmpty()) return@runCatching groups
+        }
+        // Fallback: domain-based grouping
+        controllable.groupBy { it.domain }.map { (domain, entities) ->
+            DeviceGroup(name = domain.uppercase(), entities = entities)
+        }
+    }
 
-        // Try WebSocket area mapping
-        if (serverConfig != null) {
-            Log.d(TAG, "Attempting WebSocket area mapping...")
-            try {
-                val wsClient = HaWebSocketClient(serverConfig)
-                val areaMapping = wsClient.fetchAreaMapping().getOrNull()
+    /**
+     * Group any list of entities by area using WebSocket area mapping.
+     */
+    suspend fun groupEntitiesByArea(entities: List<Entity>): List<DeviceGroup> {
+        val areaMapping = fetchAreaMapping()
+        if (areaMapping.isEmpty()) return emptyList()
 
-                if (areaMapping != null && areaMapping.isNotEmpty()) {
-                    Log.d(TAG, "WebSocket returned ${areaMapping.size} area mappings")
-                    val areaMap = mutableMapOf<String, MutableList<Entity>>()
-                    val noAreaList = mutableListOf<Entity>()
+        val areaMap = mutableMapOf<String, MutableList<Entity>>()
+        val noAreaList = mutableListOf<Entity>()
 
-                    for (entity in controllable) {
-                        val areaName = areaMapping[entity.entityId]
-                        if (areaName != null) {
-                            areaMap.getOrPut(areaName) { mutableListOf() }.add(entity)
-                        } else {
-                            noAreaList.add(entity)
-                        }
-                    }
-
-                    val groups = areaMap.map { (areaName, entities) ->
-                        DeviceGroup(name = areaName, entities = entities)
-                    }.toMutableList()
-
-                    if (noAreaList.isNotEmpty()) {
-                        val ungroupedByDomain = noAreaList.groupBy { it.domain }
-                            .map { (domain, entities) ->
-                                DeviceGroup(name = "未归类 · $domain", entities = entities)
-                            }
-                        groups.addAll(ungroupedByDomain)
-                    }
-                    return@runCatching groups
-                } else {
-                    Log.w(TAG, "WebSocket returned empty mapping")
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "WebSocket area mapping failed: ${e.message}")
+        for (entity in entities) {
+            val areaName = areaMapping[entity.entityId]
+            if (areaName != null) {
+                areaMap.getOrPut(areaName) { mutableListOf() }.add(entity)
+            } else {
+                noAreaList.add(entity)
             }
         }
 
-        // Fallback: domain-based grouping
-        Log.d(TAG, "Falling back to domain grouping")
-        controllable.groupBy { it.domain }.map { (domain, entities) ->
-            DeviceGroup(name = domain.uppercase(), entities = entities)
+        val groups = areaMap.map { (areaName, entities) ->
+            DeviceGroup(name = areaName, entities = entities)
+        }.toMutableList()
+
+        if (noAreaList.isNotEmpty()) {
+            val ungroupedByDomain = noAreaList.groupBy { it.domain }
+                .map { (domain, entities) ->
+                    DeviceGroup(name = "未归类 · $domain", entities = entities)
+                }
+            groups.addAll(ungroupedByDomain)
+        }
+        return groups
+    }
+
+
+    /**
+     * Fetch entity_id → area_name mapping via WebSocket.
+     */
+    suspend fun fetchAreaMapping(): Map<String, String> {
+        val config = serverConfig ?: return emptyMap()
+        return try {
+            val wsClient = HaWebSocketClient(config)
+            wsClient.fetchAreaMapping().getOrNull() ?: emptyMap()
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchAreaMapping failed: ${e.message}")
+            emptyMap()
         }
     }
 
