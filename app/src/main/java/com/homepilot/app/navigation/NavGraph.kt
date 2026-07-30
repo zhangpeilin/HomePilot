@@ -1,6 +1,8 @@
 package com.homepilot.app.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -52,8 +54,11 @@ fun HomePilotNavGraph(
         }
 
         composable(Routes.SERVER_CONFIG) {
+            val groupingEnabled by homeViewModel.homeGroupingEnabled.collectAsState()
             ServerConfigScreen(
                 viewModel = serverConfigViewModel,
+                homeGroupingEnabled = groupingEnabled,
+                onGroupingToggle = { enabled -> homeViewModel.setGroupingEnabled(enabled) },
                 onConfigSaved = {
                     navController.popBackStack()
                 }

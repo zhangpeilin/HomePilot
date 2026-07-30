@@ -20,6 +20,7 @@ class PreferencesManager(private val context: Context) {
         private val KEY_PORT = intPreferencesKey("server_port")
         private val KEY_TOKEN = stringPreferencesKey("access_token")
         private val KEY_USE_TLS = booleanPreferencesKey("use_tls")
+        private val KEY_HOME_GROUPING = booleanPreferencesKey("home_grouping")
         private val KEY_HOME_BUTTONS = stringPreferencesKey("home_buttons")
     }
 
@@ -32,6 +33,10 @@ class PreferencesManager(private val context: Context) {
             accessToken = preferences[KEY_TOKEN] ?: "",
             useTls = preferences[KEY_USE_TLS] ?: false
         )
+    }
+
+    val homeGroupingEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_HOME_GROUPING] ?: true
     }
 
     val homeButtonsFlow: Flow<List<HomeButton>> = context.dataStore.data.map { preferences ->
@@ -50,6 +55,12 @@ class PreferencesManager(private val context: Context) {
             preferences[KEY_PORT] = config.port
             preferences[KEY_TOKEN] = config.accessToken
             preferences[KEY_USE_TLS] = config.useTls
+        }
+    }
+
+    suspend fun saveHomeGroupingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_HOME_GROUPING] = enabled
         }
     }
 

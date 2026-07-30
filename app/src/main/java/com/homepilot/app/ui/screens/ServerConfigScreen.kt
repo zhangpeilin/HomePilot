@@ -23,6 +23,8 @@ import com.homepilot.app.viewmodel.ServerConfigViewModel
 @Composable
 fun ServerConfigScreen(
     viewModel: ServerConfigViewModel,
+    homeGroupingEnabled: Boolean = true,
+    onGroupingToggle: (Boolean) -> Unit = {},
     onConfigSaved: () -> Unit = {}
 ) {
     val config by viewModel.serverConfig.collectAsState()
@@ -222,6 +224,36 @@ fun ServerConfigScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+
+        // Home grouping toggle
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "首页按区域分组",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (homeGroupingEnabled) "已启用：首页按钮按区域收纳" else "已关闭：全部平铺显示",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = homeGroupingEnabled,
+                    onCheckedChange = onGroupingToggle
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Help card
         Card(

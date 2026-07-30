@@ -32,6 +32,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectOptions = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val selectOptions: StateFlow<Map<String, List<String>>> = _selectOptions
 
+    val homeGroupingEnabled: StateFlow<Boolean> = prefsManager.homeGroupingEnabled
+        .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
+
     // Home button grouping by area
     private val _homeButtonGroups = MutableStateFlow<Map<String, List<HomeButton>>>(emptyMap())
     val homeButtonGroups: StateFlow<Map<String, List<HomeButton>>> = _homeButtonGroups
@@ -224,6 +227,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // ─── Home button area grouping ────────────────────────────
 
     private suspend fun groupHomeButtonsByArea(buttons: List<HomeButton>) {
+        if (!homeGroupingEnabled.value) {
+            _homeButtonGroups.value = emptyMap()
+            _expandedHomeGroups.value = emptySet()
+            return
+        }
         val areaMapping = repository?.fetchAreaMapping() ?: emptyMap()
         if (areaMapping.isEmpty()) {
             _homeButtonGroups.value = emptyMap()
@@ -294,6 +302,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         "关" -> ButtonState.IDLE         // Chinese "off" for select entities
         "照明开" -> ButtonState.SUCCESS   // Chinese "light on" for 浴霸
         else -> if (haState != "off" && haState != "") ButtonState.SUCCESS else ButtonState.IDLE
+    }
+
+    fun setGroupingEnabled(enabled: Boolean) {
+        scope.launch {
+            prefsManager.saveHomeGroupingEnabled(enabled)
+            if (enabled) {
+                groupHomeButtonsByArea(homeButtons.value)
+            } else {
+                _homeButtonGroups.value = emptyMap()
+                _expandedHomeGroups.value = emptySet()
+            }
+        }
     }
 
     override fun onCleared() {
