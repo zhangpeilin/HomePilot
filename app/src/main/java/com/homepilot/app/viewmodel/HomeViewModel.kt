@@ -33,10 +33,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val selectOptions: StateFlow<Map<String, List<String>>> = _selectOptions
 
     val homeGroupingEnabled: StateFlow<Boolean> = prefsManager.homeGroupingEnabled
-        .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5000), false)
 
     val homeExpandDefault: StateFlow<Boolean> = prefsManager.homeExpandDefault
-        .stateIn(scope, SharingStarted.WhileSubscribed(5000), true)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5000), false)
 
     // Home button grouping by area
     private val _homeButtonGroups = MutableStateFlow<Map<String, List<HomeButton>>>(emptyMap())

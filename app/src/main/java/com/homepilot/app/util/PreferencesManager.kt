@@ -37,11 +37,11 @@ class PreferencesManager(private val context: Context) {
     }
 
     val homeGroupingEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_HOME_GROUPING] ?: true
+        preferences[KEY_HOME_GROUPING] ?: false
     }
 
     val homeExpandDefault: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_HOME_EXPAND_DEFAULT] ?: true
+        preferences[KEY_HOME_EXPAND_DEFAULT] ?: false
     }
 
     val homeButtonsFlow: Flow<List<HomeButton>> = context.dataStore.data.map { preferences ->
