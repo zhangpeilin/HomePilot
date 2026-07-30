@@ -322,9 +322,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun setExpandDefault(expanded: Boolean) {
         scope.launch {
             prefsManager.saveHomeExpandDefault(expanded)
-            // Re-group with new default
+            // Directly update expanded state (avoids DataStore flow delay)
             if (homeGroupingEnabled.value) {
-                groupHomeButtonsByArea(homeButtons.value)
+                _expandedHomeGroups.value = if (expanded) {
+                    _homeButtonGroups.value.keys.toSet()
+                } else {
+                    emptySet()
+                }
             }
         }
     }
