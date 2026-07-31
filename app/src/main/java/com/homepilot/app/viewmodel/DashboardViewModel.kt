@@ -1,10 +1,12 @@
 package com.homepilot.app.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.homepilot.app.model.DeviceGroup
 import com.homepilot.app.model.Entity
+import com.homepilot.app.network.HaStateSubscriber
 import com.homepilot.app.network.RetrofitClient
 import com.homepilot.app.repository.HomeAssistantRepository
 import com.homepilot.app.util.PreferencesManager
@@ -12,6 +14,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "DASH_VM"
+    }
 
     private val prefsManager = PreferencesManager(application)
 
@@ -30,14 +36,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
 
-    // Expanded/collapsed state: set of area names that are expanded
     private val _expandedControllable = MutableStateFlow<Set<String>>(emptySet())
     val expandedControllable: StateFlow<Set<String>> = _expandedControllable
 
     private val _expandedSensors = MutableStateFlow<Set<String>>(emptySet())
     val expandedSensors: StateFlow<Set<String>> = _expandedSensors
 
+    // Entity state cache for real-time updates
+    private val _entityCache = MutableStateFlow<Map<String, Entity>>(emptyMap())
+    private var allControllable = listOf<Entity>()
+    private var allSensors = listOf<Entity>()
+
     private var repository: HomeAssistantRepository? = null
+    private var stateSubscriber: HaStateSubscriber? = null
 
     init {
         viewModelScope.launch {
@@ -47,6 +58,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         val api = RetrofitClient.getApi(config)
                         repository = HomeAssistantRepository(api, config)
                         _isConnected.value = true
+                        setupSubscriber(config)
                         refreshAll()
                     } catch (e: Exception) {
                         _isConnected.value = false
@@ -59,6 +71,37 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun setupSubscriber(config: com.homepilot.app.model.ServerConfig) {
+        stateSubscriber?.unsubscribe()
+        stateSubscriber = HaStateSubscriber(
+            config = config,
+            scope = viewModelScope,
+            onStateChanged = { entityId, newState ->
+                Log.d(TAG, "Entity changed: $entityId → $newState")
+                updateEntityState(entityId, newState)
+            }
+        )
+    }
+
+    private fun updateEntityState(entityId: String, newState: String) {
+        val cache = _entityCache.value
+        val entity = cache[entityId] ?: return
+        val updated = entity.copy(state = newState)
+        _entityCache.value = cache + (entityId to updated)
+
+        // Update in place, preserving area grouping structure
+        _controllableGroups.value = _controllableGroups.value.map { group ->
+            group.copy(entities = group.entities.map {
+                if (it.entityId == entityId) updated else it
+            })
+        }
+        _sensorGroups.value = _sensorGroups.value.map { group ->
+            group.copy(entities = group.entities.map {
+                if (it.entityId == entityId) updated else it
+            })
+        }
+    }
+
     fun refreshAll() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -66,29 +109,29 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             repository?.let { repo ->
                 repo.getAllEntities()
                     .onSuccess { entities ->
-                        val controllable = entities.filter {
-                            it.domain in Entity.CONTROLLABLE_DOMAINS
-                        }
-                        val sensors = entities.filter {
+                        allControllable = entities.filter { it.domain in Entity.CONTROLLABLE_DOMAINS }
+                        allSensors = entities.filter {
                             it.domain !in Entity.CONTROLLABLE_DOMAINS
                                     && it.domain !in Entity.SCENE_DOMAINS
                                     && it.domain != "zone"
                         }
+                        _entityCache.value = entities.associateBy { it.entityId }
+                        // Subscribe to all entities for real-time updates
+                        stateSubscriber?.subscribe(entities.map { it.entityId }.toSet())
 
                         // Try area grouping
-                        val ctrlGroups = repo.groupEntitiesByArea(controllable)
+                        val ctrlGroups = repo.groupEntitiesByArea(allControllable)
                         _controllableGroups.value = ctrlGroups.ifEmpty {
-                            controllable.groupBy { it.domain }
+                            allControllable.groupBy { it.domain }
                                 .map { (d, list) -> DeviceGroup(name = d.uppercase(), entities = list) }
                         }
 
-                        val sensorGroups = repo.groupEntitiesByArea(sensors)
+                        val sensorGroups = repo.groupEntitiesByArea(allSensors)
                         _sensorGroups.value = sensorGroups.ifEmpty {
-                            sensors.groupBy { it.domain }
+                            allSensors.groupBy { it.domain }
                                 .map { (d, list) -> DeviceGroup(name = d.uppercase(), entities = list) }
                         }
 
-                        // Default: all collapsed
                         _expandedControllable.value = emptySet()
                         _expandedSensors.value = emptySet()
                     }
@@ -140,5 +183,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     .onFailure { _error.value = it.message }
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stateSubscriber?.unsubscribe()
     }
 }
